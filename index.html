@@ -8,26 +8,93 @@ body{margin:0;background:#f3f6f9;font-family:system-ui;color:#17202a}.wrap{max-w
 <div class="actions"><button class="start" onclick="book('START')">▶ Arbeitszeit starten</button><button class="pause" onclick="togglePause()">Ⅱ <span id="pauseLabel">Pause starten</span></button><button class="end" onclick="book('ENDE')">■ Arbeitszeit beenden</button></div>
 <div class="loc">📍 <b>Geofence</b><br><span class="muted">Standort wird nur beim Buchen geprüft.</span><br><span id="gps" class="ok">Noch keine Prüfung</span></div><p id="msg" class="muted"></p></div>
 <div class="card"><h2>Heute</h2><div class="metrics"><div class="metric">Arbeitszeit<b id="worked">0:00 h</b></div><div class="metric">Pausen<b id="breakTotal">0:00 h</b></div><div class="metric">Buchungen<b id="count">0</b></div></div></div>
-<div class="card"><h2>Arbeitszeitauswertung</h2><div class="tabs"><button id="dayBtn" class="active" onclick="setView('day')">Heute</button><button id="weekBtn" onclick="setView('week')">Woche</button><button id="monthBtn" onclick="setView('month')">Monat</button></div><div id="summary"></div></div>
+<div class="card"><h2>Arbeitszeitauswertung</h2>
+<div class="metrics">
+<div><span>Arbeitszeit netto</span><b id="worked">0:00 h</b></div>
+<div><span>Pausen</span><b id="breakTotal">0:00 h</b></div>
+<div><span>Bruttozeit</span><b id="grossTotal">0:00 h</b></div>
+<div><span>Sollzeit</span><b>8:00 h</b></div>
+<div><span>Überstunden heute</span><b id="overtime">0:00 h</b></div>
+<div><span>Buchungen</span><b id="count">0</b></div>
+</div>
+<div class="tabs"><button id="dayBtn" class="active" onclick="setView('day')">Heute</button><button id="weekBtn" onclick="setView('week')">Woche</button><button id="monthBtn" onclick="setView('month')">Monat</button></div>
+<div id="summary"></div></div>
 <div class="card"><h2>Heutige Buchungen</h2><table><thead><tr><th>Buchung</th><th>Uhrzeit</th></tr></thead><tbody id="rows"></tbody></table></div>
 <div class="card"><h2>Was wurde gearbeitet?</h2><p id="detail" class="muted">Noch keine Arbeitszeit erfasst.</p><p class="small muted">Die Testversion speichert die Daten nur lokal auf diesem Telefon.</p></div>
 </div>
 <script>
-const KEY='arbeitszeit_v2';let data=JSON.parse(localStorage.getItem(KEY)||'{"events":[]}');let start=null,pauseStart=null,pausedMs=0,view='day';
+const KEY='arbeitszeit_v3';
+let data=JSON.parse(localStorage.getItem(KEY)||'{"events":[]}');
+let start=null,pauseStart=null,view='day';
+
 function save(){localStorage.setItem(KEY,JSON.stringify(data))}
 function fmtTime(t){return new Date(t).toLocaleTimeString('de-AT',{hour:'2-digit',minute:'2-digit'})}
-function fmtDur(ms){ms=Math.max(0,ms);let m=Math.floor(ms/60000);return Math.floor(m/60)+':'+String(m%60).padStart(2,'0')+' h'}
-function dayKey(t){return new Date(t).toISOString().slice(0,10)}
-function todayEvents(){return data.events.filter(e=>dayKey(e.t)===dayKey(Date.now()))}
-function calc(events){let work=0,br=0,open=null,pb=null;for(const e of events){if(e.k==='START')open=e.t;if(e.k==='PAUSE_START'&&open&&!pb)pb=e.t;if(e.k==='PAUSE_END'&&pb){br+=e.t-pb;pb=null}if(e.k==='ENDE'&&open){let end=e.t;if(pb){br+=end-pb;pb=null}work+=end-open;br=br;open=null}}if(open){work+=Date.now()-open;if(pb)br+=Date.now()-pb}return {gross:work,br,net:Math.max(0,work-br)}}
-function render(){let ev=todayEvents();let c=calc(ev);worked.textContent=fmtDur(c.net);breakTotal.textContent=fmtDur(c.br);count.textContent=ev.length;rows.innerHTML=ev.map(e=>`<tr><td>${label(e.k)}</td><td>${fmtTime(e.t)}</td></tr>`).join('')||'<tr><td colspan="2">Noch keine Buchungen</td></tr>';detail.textContent=ev.length?`Bruttozeit: ${fmtDur(c.gross)} · Pausen: ${fmtDur(c.br)} · Nettoarbeitszeit: ${fmtDur(c.net)}`:'Noch keine Arbeitszeit erfasst.';renderSummary();status.textContent=start?'Arbeitszeit läuft':(pauseStart?'Pause':'Nicht eingestempelt');pauseLabel.textContent=pauseStart?'Pause beenden':'Pause starten'}
+function fmtDur(ms){ms=Math.max(0,ms||0);let m=Math.floor(ms/60000);return Math.floor(m/60)+':'+String(m%60).padStart(2,'0')+' h'}
+function dayKey(t){let d=new Date(t);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function eventsFor(k){return data.events.filter(e=>dayKey(e.t)===k).sort((a,b)=>a.t-b.t)}
+function calc(events, live=false){
+ let gross=0,br=0,open=null,pb=null;
+ for(const e of events){
+   if(e.k==='START') open=e.t;
+   else if(e.k==='PAUSE_START' && open && pb===null) pb=e.t;
+   else if(e.k==='PAUSE_END' && pb!==null){br+=e.t-pb;pb=null}
+   else if(e.k==='ENDE' && open!==null){
+     let end=e.t;if(pb!==null){br+=end-pb;pb=null}
+     gross+=end-open;open=null;
+   }
+ }
+ if(live && open!==null){
+   let now=Date.now();gross+=now-open;if(pb!==null)br+=now-pb;
+ }
+ return {gross,br,net:Math.max(0,gross-br)};
+}
+function currentEvents(){return eventsFor(dayKey(Date.now()))}
+function render(){
+ let ev=currentEvents(),c=calc(ev,true);
+ worked.textContent=fmtDur(c.net);breakTotal.textContent=fmtDur(c.br);grossTotal.textContent=fmtDur(c.gross);
+ let ot=c.net-8*60*60*1000;
+ overtime.textContent=(ot>=0?'+':'-')+fmtDur(Math.abs(ot));
+ count.textContent=ev.length;
+ rows.innerHTML=ev.map(e=>`<tr><td>${label(e.k)}</td><td>${fmtTime(e.t)}</td></tr>`).join('')||'<tr><td colspan="2">Noch keine Buchungen</td></tr>';
+ detail.textContent=ev.length?`Bruttozeit: ${fmtDur(c.gross)} · Pausen: ${fmtDur(c.br)} · Nettoarbeitszeit: ${fmtDur(c.net)}`:'Noch keine Arbeitszeit erfasst.';
+ let last=ev.length?ev[ev.length-1].k:'';
+ let running=last==='START'||last==='PAUSE_END';
+ start=running? (ev.slice().reverse().find(e=>e.k==='START')||{}).t:null;
+ pauseStart=last==='PAUSE_START'?(ev[ev.length-1].t):null;
+ status.textContent=last==='PAUSE_START'?'Pause':running?'Arbeitszeit läuft':'Nicht eingestempelt';
+ pauseLabel.textContent=last==='PAUSE_START'?'Pause beenden':'Pause starten';
+}
 function label(k){return ({START:'Arbeitsbeginn',PAUSE_START:'Pause Beginn',PAUSE_END:'Pause Ende',ENDE:'Arbeitsende'})[k]||k}
-function tick(){if(start){let ev=todayEvents(),c=calc(ev);clock.textContent=fmtClock(c.net)}else clock.textContent='00:00:00';render()}
-function fmtClock(ms){let s=Math.floor(ms/1000);return [Math.floor(s/3600),Math.floor(s/60)%60,s%60].map(x=>String(x).padStart(2,'0')).join(':')}
-function gpsThen(fn){if(!navigator.geolocation){msg.textContent='GPS wird von diesem Browser nicht unterstützt.';return}navigator.geolocation.getCurrentPosition(p=>{gps.textContent='✓ Standort ermittelt';fn(p)},()=>msg.textContent='Standortzugriff bitte erlauben.',{enableHighAccuracy:true,timeout:10000})}
-function book(k){if(k==='START'&&start){msg.textContent='Du bist bereits eingestempelt.';return}if(k==='ENDE'&&!start){msg.textContent='Keine laufende Arbeitszeit.';return}gpsThen(()=>{data.events.push({k,t:Date.now(),lat:null,lon:null});if(k==='START')start=Date.now();if(k==='ENDE'){start=null;pauseStart=null}save();msg.textContent='Buchung gespeichert.';render()})}
-function togglePause(){if(!start){msg.textContent='Bitte zuerst Arbeitszeit starten.';return}gpsThen(()=>{let k=pauseStart?'PAUSE_END':'PAUSE_START';data.events.push({k,t:Date.now()});pauseStart=pauseStart?null:Date.now();save();msg.textContent=k==='PAUSE_START'?'Pause gestartet.':'Pause beendet.';render()})}
+function tick(){render()}
+function gpsThen(fn){
+ if(!navigator.geolocation){msg.textContent='GPS wird von diesem Browser nicht unterstützt.';return}
+ navigator.geolocation.getCurrentPosition(p=>{gps.textContent='✓ Standort ermittelt';fn(p)},()=>msg.textContent='Standortzugriff bitte erlauben.',{enableHighAccuracy:true,timeout:10000})
+}
+function book(k){
+ let ev=currentEvents(),last=ev.length?ev[ev.length-1].k:'';
+ if(k==='START' && (last==='START'||last==='PAUSE_END')){msg.textContent='Du bist bereits eingestempelt.';return}
+ if(k==='ENDE' && !(last==='START'||last==='PAUSE_END'||last==='PAUSE_START')){msg.textContent='Keine laufende Arbeitszeit.';return}
+ if(k==='ENDE' && last==='PAUSE_START'){msg.textContent='Bitte zuerst die Pause beenden.';return}
+ gpsThen(p=>{data.events.push({k,t:Date.now(),lat:p.coords.latitude,lon:p.coords.longitude});save();msg.textContent='Buchung gespeichert.';render()})
+}
+function togglePause(){
+ let ev=currentEvents(),last=ev.length?ev[ev.length-1].k:'';
+ if(!(last==='START'||last==='PAUSE_END'||last==='PAUSE_START')){msg.textContent='Bitte zuerst Arbeitszeit starten.';return}
+ let k=last==='PAUSE_START'?'PAUSE_END':'PAUSE_START';
+ gpsThen(p=>{data.events.push({k,t:Date.now(),lat:p.coords.latitude,lon:p.coords.longitude});save();msg.textContent=k==='PAUSE_START'?'Pause gestartet.':'Pause beendet.';render()})
+}
 function setView(v){view=v;document.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('active'));document.getElementById(v+'Btn').classList.add('active');renderSummary()}
-function renderSummary(){let now=new Date();let rows=[];if(view==='day'){let ev=todayEvents();let c=calc(ev);rows=[['Heute',fmtDur(c.net),fmtDur(c.br)]]}else if(view==='week'){for(let i=6;i>=0;i--){let d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-i);let k=dayKey(d);let ev=data.events.filter(e=>dayKey(e.t)===k);let c=calc(ev);if(ev.length)rows.push([d.toLocaleDateString('de-AT',{weekday:'short',day:'2-digit',month:'2-digit'}),fmtDur(c.net),fmtDur(c.br)])}}else{for(let i=0;i<30;i++){let d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-i);let k=dayKey(d);let ev=data.events.filter(e=>dayKey(e.t)===k);if(ev.length){let c=calc(ev);rows.push([d.toLocaleDateString('de-AT',{day:'2-digit',month:'2-digit'}),fmtDur(c.net),fmtDur(c.br)])}}}summary.innerHTML='<table><tr><th>Tag</th><th>Arbeitszeit</th><th>Pausen</th></tr>'+ (rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join('')||'<tr><td colspan="3">Noch keine Daten.</td></tr>')+'</table>'}
-render();setInterval(tick,1000);if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js');
+function renderSummary(){
+ let rows=[];
+ if(view==='day'){let c=calc(currentEvents(),true);rows=[['Heute',fmtDur(c.net),fmtDur(c.br)]]}
+ else if(view==='week'){
+  for(let i=6;i>=0;i--){let d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-i);let ev=eventsFor(dayKey(d));if(ev.length){let c=calc(ev);rows.push([d.toLocaleDateString('de-AT',{weekday:'short',day:'2-digit',month:'2-digit'}),fmtDur(c.net),fmtDur(c.br)])}}
+ } else {
+  let first=new Date();first.setDate(1);let days=new Date(first.getFullYear(),first.getMonth()+1,0).getDate();
+  for(let i=1;i<=days;i++){let d=new Date(first.getFullYear(),first.getMonth(),i);let ev=eventsFor(dayKey(d));if(ev.length){let c=calc(ev);rows.push([d.toLocaleDateString('de-AT',{day:'2-digit',month:'2-digit'}),fmtDur(c.net),fmtDur(c.br)])}}
+ }
+ summary.innerHTML='<table><tr><th>Tag</th><th>Arbeitszeit</th><th>Pausen</th></tr>'+ (rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join('')||'<tr><td colspan="3">Noch keine Daten.</td></tr>')+'</table>'
+}
+render();setInterval(tick,1000);
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js');
 </script></body></html>
