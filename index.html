@@ -2,19 +2,19 @@
 <html lang="de"><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#172a3b"><link rel="manifest" href="manifest.json"><title>Arbeitszeit</title>
 <style>
 body{margin:0;background:#f3f6f9;font-family:system-ui;color:#17202a}.wrap{max-width:760px;margin:auto;padding:16px}.card{background:#fff;border-radius:18px;padding:20px;margin:14px 0;box-shadow:0 3px 14px #0001}h1,h2{margin-top:0}.clock{text-align:center;font-size:48px;font-weight:800;margin:20px 0 4px}.status{text-align:center;font-weight:700;color:#149447}.actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:20px}button{padding:15px 8px;border:0;border-radius:13px;font-size:16px;font-weight:700}.start{background:#149447;color:white}.pause{background:#df8600;color:white}.end{background:#c93636;color:white}.loc{margin-top:15px;padding:13px;background:#eaf5ff;border-radius:12px}.ok{color:#149447;font-weight:700}.muted{color:#667085}.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.metric{background:#f7f9fb;padding:14px;border-radius:13px}.metric b{display:block;font-size:22px;margin-top:4px}table{width:100%;border-collapse:collapse}td,th{padding:10px 3px;border-bottom:1px solid #eee;text-align:left}.tabs{display:flex;gap:8px;margin-bottom:12px}.tabs button{background:#edf1f5}.tabs button.active{background:#172a3b;color:white}.danger{color:#b42318}.small{font-size:13px}@media(max-width:600px){.actions,.metrics{grid-template-columns:1fr}.clock{font-size:42px}}
-</style></head>
+.overtimeBox{margin-top:10px;padding:14px;border-radius:12px;background:#123b28;color:#fff;font-size:18px}.overtimeBox b{color:#66e39a;font-size:22px}</style></head>
 <body><div class="wrap">
 <div class="card"><h1>Arbeitszeit</h1><p class="muted">Mitarbeiter: Günther · Einzelplatz-Test</p><div id="clock" class="clock">00:00:00</div><div id="status" class="status">Nicht eingestempelt</div>
 <div class="actions"><button class="start" onclick="book('START')">▶ Arbeitszeit starten</button><button class="pause" onclick="togglePause()">Ⅱ <span id="pauseLabel">Pause starten</span></button><button class="end" onclick="book('ENDE')">■ Arbeitszeit beenden</button></div>
 <div class="loc">📍 <b>Geofence</b><br><span class="muted">Standort wird nur beim Buchen geprüft.</span><br><span id="gps" class="ok">Noch keine Prüfung</span></div><p id="msg" class="muted"></p></div>
-<div class="card"><h2>Heute</h2><div class="metrics"><div class="metric">Arbeitszeit<b id="worked">0:00 h</b></div><div class="metric">Pausen<b id="breakTotal">0:00 h</b></div><div class="metric">Buchungen<b id="count">0</b></div></div></div>
+
 <div class="card"><h2>Arbeitszeitauswertung</h2>
 <div class="metrics">
 <div><span>Arbeitszeit netto</span><b id="worked">0:00 h</b></div>
 <div><span>Pausen</span><b id="breakTotal">0:00 h</b></div>
 <div><span>Bruttozeit</span><b id="grossTotal">0:00 h</b></div>
 <div><span>Sollzeit</span><b>8:00 h</b></div>
-<div><span>Überstunden heute</span><b id="overtime">0:00 h</b></div>
+<div class="overtimeBox"><span>Überstunden heute</span><b id="overtime">0:00 h</b></div>
 <div><span>Buchungen</span><b id="count">0</b></div>
 </div>
 <div class="tabs"><button id="dayBtn" class="active" onclick="setView('day')">Heute</button><button id="weekBtn" onclick="setView('week')">Woche</button><button id="monthBtn" onclick="setView('month')">Monat</button></div>
@@ -86,14 +86,14 @@ function togglePause(){
 function setView(v){view=v;document.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('active'));document.getElementById(v+'Btn').classList.add('active');renderSummary()}
 function renderSummary(){
  let rows=[];
- if(view==='day'){let c=calc(currentEvents(),true);rows=[['Heute',fmtDur(c.net),fmtDur(c.br)]]}
+ if(view==='day'){let c=calc(currentEvents(),true);rows=[['Heute',fmtDur(c.net),fmtDur(c.br),(c.net>=8*60*60*1000?'+':'-')+fmtDur(Math.abs(c.net-8*60*60*1000))]]}
  else if(view==='week'){
   for(let i=6;i>=0;i--){let d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-i);let ev=eventsFor(dayKey(d));if(ev.length){let c=calc(ev);rows.push([d.toLocaleDateString('de-AT',{weekday:'short',day:'2-digit',month:'2-digit'}),fmtDur(c.net),fmtDur(c.br)])}}
  } else {
   let first=new Date();first.setDate(1);let days=new Date(first.getFullYear(),first.getMonth()+1,0).getDate();
   for(let i=1;i<=days;i++){let d=new Date(first.getFullYear(),first.getMonth(),i);let ev=eventsFor(dayKey(d));if(ev.length){let c=calc(ev);rows.push([d.toLocaleDateString('de-AT',{day:'2-digit',month:'2-digit'}),fmtDur(c.net),fmtDur(c.br)])}}
  }
- summary.innerHTML='<table><tr><th>Tag</th><th>Arbeitszeit</th><th>Pausen</th></tr>'+ (rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join('')||'<tr><td colspan="3">Noch keine Daten.</td></tr>')+'</table>'
+ summary.innerHTML='<table><tr><th>Tag</th><th>Arbeitszeit</th><th>Pausen</th><th>Überstunden</th></tr>'+ (rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td></tr>`).join('')||'<tr><td colspan="3">Noch keine Daten.</td></tr>')+'</table>'
 }
 render();setInterval(tick,1000);
 if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js');
