@@ -20,7 +20,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:13px 4px;border-bottom:1
 <body><main>
 <section class="card">
 <h1>Arbeitszeit</h1>
-<div class="sub">Mitarbeiter: Günther · Einzelplatz-Test</div>
+<div class="sub">Mitarbeiter: Günther · Einzelplatz-Test · v6</div>
 <div class="timer" id="timer">00:00:00</div>
 <div class="status" id="status">Nicht eingestempelt</div>
 <button class="start" onclick="startWork()">▶ Arbeitszeit starten</button>
@@ -47,7 +47,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:13px 4px;border-bottom:1
 <section class="card"><h2>Wichtig</h2><div class="small">Die Testversion speichert die Buchungen lokal auf diesem Telefon. Die laufende Arbeitszeit bleibt auch nach einem Neuladen der Seite erhalten.</div></section>
 </main>
 <script>
-const KEY='arbeitszeit_guenther_v5';
+const KEY='arbeitszeit_guenther_v6';
 let data=JSON.parse(localStorage.getItem(KEY)||'null')||{days:{}};
 const todayKey=new Date().toISOString().slice(0,10);
 if(!data.days[todayKey]) data.days[todayKey]={events:[]};
@@ -122,5 +122,6 @@ function setPeriodView(p){
  document.getElementById('period').innerHTML=`<div class="grid"><div class="metric"><span>Arbeitszeit</span><b>${fmt(total)}</b></div><div class="metric"><span>Pausen</span><b>${fmt(pa)}</b></div><div class="metric"><span>Arbeitstage</span><b>${days}</b></div><div class="metric"><span>Überstunden*</span><b>${(total-days*8*3600000>=0?'+':'-')+fmt(Math.abs(total-days*8*3600000))}</b></div></div><p class="small">* Testweise mit 8:00 h Sollzeit pro Arbeitstag gerechnet.</p>`
 }
 function msg(x){document.getElementById('msg').textContent=x}
+if('serviceWorker' in navigator){navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister())).catch(()=>{});}
 render();setInterval(render,1000);
 </script></body></html>
